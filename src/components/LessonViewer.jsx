@@ -4,8 +4,8 @@ export default function LessonViewer({ topic, backendUrl }) {
   const [lessons, setLessons] = useState([])
   const [activeLesson, setActiveLesson] = useState(null)
   const [exercises, setExercises] = useState([])
-  const [answer, setAnswer] = useState('')
-  const [feedback, setFeedback] = useState(null)
+  const [answers, setAnswers] = useState({}) // { [exerciseId]: value }
+  const [feedback, setFeedback] = useState({}) // { [exerciseId]: { correct, explanation } }
 
   useEffect(() => {
     if (!topic) return
@@ -14,6 +14,9 @@ export default function LessonViewer({ topic, backendUrl }) {
       const data = await res.json()
       setLessons(data)
       setActiveLesson(data[0] || null)
+      setExercises([])
+      setAnswers({})
+      setFeedback({})
     }
     fetchLessons()
   }, [topic, backendUrl])
@@ -24,17 +27,28 @@ export default function LessonViewer({ topic, backendUrl }) {
       const res = await fetch(`${backendUrl}/api/lessons/${activeLesson._id}/exercises`)
       const data = await res.json()
       setExercises(data)
+      setAnswers({})
+      setFeedback({})
     }
     fetchExercises()
   }, [activeLesson, backendUrl])
 
+  const normalize = (s) => (s ?? '').toString().trim()
+
   const submitAnswer = (ex) => {
+    const userAnswer = answers[ex._id]
     if (ex.type === 'mcq') {
-      const correct = answer === ex.answer
-      setFeedback({ correct, explanation: ex.explanation })
+      const correct = userAnswer === ex.answer
+      setFeedback((f) => ({ ...f, [ex._id]: { correct, explanation: ex.explanation } }))
     } else {
-      setFeedback({ correct: true, explanation: 'Sample answer saved.' })
+      // text question: case-insensitive, trimmed comparison
+      const correct = normalize(userAnswer).toLowerCase() === normalize(ex.answer).toLowerCase()
+      setFeedback((f) => ({ ...f, [ex._id]: { correct, explanation: ex.explanation } }))
     }
+  }
+
+  const setAnswerFor = (exId, value) => {
+    setAnswers((a) => ({ ...a, [exId]: value }))
   }
 
   if (!topic) {
@@ -66,36 +80,52 @@ export default function LessonViewer({ topic, backendUrl }) {
                 <p className="text-gray-500 text-sm">No exercises for this lesson.</p>
               ) : (
                 exercises.map((ex) => (
-                  <div key={ex._id} className="mt-3 border-t pt-3">
+                  <div key={ex._id} className="mt-4 border-t pt-4">
                     <p className="font-medium">{ex.question}</p>
+
                     {ex.type === 'mcq' && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {ex.options?.map((op) => (
-                          <label key={op.key} className="inline-flex items-center gap-2 px-3 py-2 border rounded cursor-pointer hover:bg-gray-50">
+                          <label key={op.key} className={`inline-flex items-center gap-2 px-3 py-2 border rounded cursor-pointer transition hover:bg-gray-50 ${answers[ex._id] === op.key ? 'bg-indigo-50 border-indigo-200' : ''}`}>
                             <input
                               type="radio"
                               name={`q-${ex._id}`}
                               value={op.key}
-                              onChange={(e) => setAnswer(e.target.value)}
+                              checked={answers[ex._id] === op.key}
+                              onChange={(e) => setAnswerFor(ex._id, e.target.value)}
                             />
                             <span>{op.key}. {op.text}</span>
                           </label>
                         ))}
                       </div>
                     )}
+
+                    {ex.type === 'text' && (
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          placeholder="Type your answer…"
+                          value={answers[ex._id] ?? ''}
+                          onChange={(e) => setAnswerFor(ex._id, e.target.value)}
+                          className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    )}
+
                     <button
                       onClick={() => submitAnswer(ex)}
-                      className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded"
+                      className="mt-3 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded"
                     >
                       Check answer
                     </button>
+
+                    {feedback[ex._id] && (
+                      <div className={`mt-3 p-3 rounded ${feedback[ex._id].correct ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                        {feedback[ex._id].correct ? 'Correct!' : 'Not quite.'} {feedback[ex._id].explanation}
+                      </div>
+                    )}
                   </div>
                 ))
-              )}
-              {feedback && (
-                <div className={`mt-3 p-3 rounded ${feedback.correct ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  {feedback.correct ? 'Correct!' : 'Not quite.'} {feedback.explanation}
-                </div>
               )}
             </div>
           </div>
